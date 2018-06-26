@@ -13,6 +13,7 @@ import tf
 import std_msgs
 import sensor_msgs.point_cloud2 as pc2
 from geometry_msgs.msg import TransformStamped
+from tf2_msgs.msg import TFMessage
 
 
 BASE_FRAME_ID = "world"
@@ -61,7 +62,7 @@ def latlong_to_rel_xy(lat_lon):
     dlat_rad = lat_rad - lat_rad[0]
     dlon_rad = lon_rad - lon_rad[0]
     #constants
-    R = 63684940. # earth radius (m) in detroit at sea level
+    R = 6368494. # earth radius (m) in detroit at sea level
     r = R * np.cos(lat_rad[0]) # radius of longitude circle at init latitude
     #conversion
     dx = r * np.sin(dlon_rad)
@@ -81,7 +82,7 @@ def gps_xy_to_theta(xy):
     stheta = np.copy(theta)
     last_good_t = theta[0]
     for i, t in enumerate(theta):
-        if dd[i] < 0.25:
+        if dd[i] < 0.025:
             stheta[i] = last_good_t
         else:
             last_good_t = t
@@ -167,8 +168,10 @@ try:
             t.transform.rotation.y = q[1]
             t.transform.rotation.z = q[2]
             t.transform.rotation.w = q[3]
+            tfmsg = TFMessage()
+            tfmsg.transforms.append(t)
             # Write message
-            bag.write(TF_TOPIC, t, timestamp)
+            bag.write(TF_TOPIC, tfmsg, timestamp)
             # Load next index
             next_gps_indx = next_gps_indx + 1
             # Check if last message
@@ -198,8 +201,10 @@ try:
             t.transform.rotation.y = next_imu_q[1]
             t.transform.rotation.z = next_imu_q[2]
             t.transform.rotation.w = next_imu_q[3]
+            tfmsg = TFMessage()
+            tfmsg.transforms.append(t)
             # Write message
-            bag.write(TF_TOPIC, t, timestamp)
+            bag.write(TF_TOPIC, tfmsg, timestamp)
             # Load next index
             next_imu_indx = next_imu_indx + 1
             if next_imu_indx >= len(imu_times):
