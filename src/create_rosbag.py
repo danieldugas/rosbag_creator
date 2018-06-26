@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from __future__ import print_function
+from builtins import input
 import sys
 import os
 import rospy
@@ -8,6 +9,7 @@ import time
 from scipy.io import loadmat
 import numpy as np
 import itertools
+import argparse
 
 import tf
 import std_msgs
@@ -15,7 +17,15 @@ import sensor_msgs.point_cloud2 as pc2
 from geometry_msgs.msg import TransformStamped
 from tf2_msgs.msg import TFMessage
 
+parser = argparse.ArgumentParser(description='Creates a rosbag from autonomous driving datasets.')
+parser.add_argument('dataset_dir', metavar='DATASET_DIR', type=str,
+                    help='The directory containing the dataset. For example /media/Datasets/IJRR-Dataset-1')
+parser.add_argument('output_bag', metavar='OUTPUT_BAG', type=str,
+                    help='The path to the output bag.')
+args = parser.parse_args()
 
+dataset_path = os.path.abspath(args.dataset_dir)
+output_path = os.path.abspath(args.output_bag)
 BASE_FRAME_ID = "world"
 GPS_FRAME_ID = "gps_odom"
 IMU_FRAME_ID = "imu_odom"
@@ -90,8 +100,9 @@ def gps_xy_to_theta(xy):
 
 
 
-# Open GPS
-gps = loadmat("/media/pithos/Datasets/Ford/IJRR-Dataset-1/Gps.mat")['pose_gps']
+# Open GPS (Gps.mat should be saved using the load_gps matlab function)
+gps_mat_path = os.path.join(dataset_path, "Gps.mat")
+gps = loadmat(gps_mat_path)['pose_gps']
 gps_times = gps['utime'][0][0][::2].flatten()
 gps_lat_lon_el_theta = gps['lat_lon_el_theta'][0][0][::2]
 gps_X_Y_Z = latlongalt_to_XYZ(gps_lat_lon_el_theta[:,:3])
@@ -111,14 +122,15 @@ gps_cov = gps['gps_cov'][0][0][::2]
 # plt.figure()
 
 # Open IMU Pose
-imu = loadmat("/media/pithos/Datasets/Ford/IJRR-Dataset-1/PoseApplanix.mat")['pose_applanix']
+imu_mat_path = os.path.join(dataset_path, "Pose-Applanix.mat")
+imu = loadmat(imu_mat_path)['pose_applanix']
 imu_times = imu['utime'][0][0].flatten()
 imu_pos = imu['pos'][0][0]
 imu_pos = imu_pos - imu_pos[0] # set 0, 0, 0 to first timestamp
 imu_q = imu['orientation'][0][0]
 
 # List velodyne laser scan files
-las_dir = "/media/pithos/Datasets/Ford/IJRR-Dataset-1/SCANS"
+las_dir = os.path.join(dataset_path, "SCANS")
 las_files = os.listdir(las_dir)
 las_files.sort()
 
@@ -143,8 +155,16 @@ next_las_XYZ = next_las['XYZ'][0][0].T
 next_las_time = next_las['timestamp_laser'][0][0][0][0]
 
 total_messages = len(gps_times) + len(imu_times) + len(las_files)
+
+if os.path.isfile(output_path):
+    print("File {} already exists, replace it? [Y]/n: ".format(output_path), end='')
+    keys = input()
+    if keys in ['', 'Y', 'Yes', 'y', 'yes']:
+        os.remove(output_path)
+    else:
+        quit()
 try:
-    bag = rosbag.Bag('test.bag', 'w')
+    bag = rosbag.Bag(output_path, 'w')
     for count in itertools.count():
         try:
             pick = np.nanargmin([next_gps_time, next_imu_time, next_las_time])
