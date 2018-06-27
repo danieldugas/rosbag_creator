@@ -98,6 +98,30 @@ def gps_xy_to_theta(xy):
             last_good_t = t
     return stheta
 
+def fetch_gps(indx, *args):
+    """ 
+    Fetch stored observations at given index.
+    
+    indx:  index of the observation to fetch
+    args:  iterables each of length > indx, containing observations.
+
+    returns: observation at index indx for each iterable arg.
+    """
+    if True in [indx >= len(arg) for arg in args]:
+        return [np.nan for arg in args]
+    return [arg[next_gps_indx] for arg in args]
+
+fetch_imu = fetch_gps
+
+def fetch_las(indx, las_dir, las_files):
+    """ Fetch next laser observation """
+    next_las_file = os.path.join(las_dir, las_files[next_las_indx])
+    next_las = loadmat(next_las_file)['SCAN']
+    next_las_XYZ = next_las['XYZ'][0][0].T
+    next_las_time = next_las['timestamp_laser'][0][0][0][0]
+    if indx >= len(las_files):
+        return np.nan, np.nan
+    return next_las_time, next_las_XYZ
 
 
 # Open GPS (Gps.mat should be saved using the load_gps matlab function)
@@ -139,20 +163,19 @@ next_gps_indx = 0
 next_imu_indx = 0
 next_las_indx = 0
 
-# Fetch next gps observation
-next_gps_time = gps_times[next_gps_indx]
-next_gps_x_y_z = gps_x_y_z[next_gps_indx]
-next_gps_theta = gps_theta[next_gps_indx]
-next_gps_cov = gps_cov[next_gps_indx]
-# Fetch next imu observation
-next_imu_time = imu_times[next_imu_indx]
-next_imu_pos = imu_pos[next_imu_indx]
-next_imu_q = imu_q[next_imu_indx]
-# Fetch next laser observation
-next_las_file = os.path.join(las_dir, las_files[next_las_indx])
-next_las = loadmat(next_las_file)['SCAN']
-next_las_XYZ = next_las['XYZ'][0][0].T
-next_las_time = next_las['timestamp_laser'][0][0][0][0]
+
+next_gps_time, next_gps_x_y_z, next_gps_theta, next_gps_cov = fetch_gps(
+        gps_times,
+        gps_x_y_z,
+        gps_theta,
+        gps_cov,
+)
+next_imu_time, next_imu_pos, next_imu_q = fetch_imu(
+        imu_times,
+        imu_pos,
+        imu_q,
+)
+next_las_time, next_las_XYZ = fetch_las(next_las_indx, las_dir, las_files)
 
 total_messages = len(gps_times) + len(imu_times) + len(las_files)
 
@@ -194,16 +217,13 @@ try:
             bag.write(TF_TOPIC, tfmsg, timestamp)
             # Load next index
             next_gps_indx = next_gps_indx + 1
-            # Check if last message
-            if next_gps_indx >= len(gps_times):
-                next_gps_indx = -1
-                next_gps_time = np.nan
-            else:
-                # Fetch next gps observation
-                next_gps_time = gps_times[next_gps_indx]
-                next_gps_x_y_z = gps_x_y_z[next_gps_indx]
-                next_gps_theta = gps_theta[next_gps_indx]
-                next_gps_cov = gps_cov[next_gps_indx]
+            # Fetch next gps observation.
+            next_gps_time, next_gps_x_y_z, next_gps_theta, next_gps_cov = fetch_gps(
+                    gps_times,
+                    gps_x_y_z,
+                    gps_theta,
+                    gps_cov,
+            )
         if pick == 1:
             # Generate imu_odom message
             h =  std_msgs.msg.Header()
@@ -227,14 +247,12 @@ try:
             bag.write(TF_TOPIC, tfmsg, timestamp)
             # Load next index
             next_imu_indx = next_imu_indx + 1
-            if next_imu_indx >= len(imu_times):
-                next_imu_indx = -1
-                next_imu_time = np.nan
-            else:
-                # Fetch next imu observation
-                next_imu_time = imu_times[next_imu_indx]
-                next_imu_pos = imu_pos[next_imu_indx]
-                next_imu_q = imu_q[next_imu_indx]
+            # Fetch next imu observation.
+            next_imu_time, next_imu_pos, next_imu_q = fetch_imu(
+                    imu_times,
+                    imu_pos,
+                    imu_q,
+            )
         if pick == 2:
             # Generate velodyne message
             h =  std_msgs.msg.Header()
@@ -247,15 +265,8 @@ try:
             bag.write(LAS_TOPIC, points, timestamp)
             # Load next index
             next_las_indx = next_las_indx + 1
-            if next_las_indx >= len(las_files):
-                next_las_indx = -1
-                next_las_time = np.nan
-            else:
-                # Fetch next laser observation
-                next_las_file = os.path.join(las_dir, las_files[next_las_indx])
-                next_las = loadmat(next_las_file)['SCAN']
-                next_las_XYZ = next_las['XYZ'][0][0].T
-                next_las_time = next_las['timestamp_laser'][0][0][0][0]
+            # Fetch next laser observation
+            next_las_time, next_las_XYZ = fetch_las(next_las_indx, las_dir, las_files)
         print("{} out of {}".format(count, total_messages))
 finally:
     bag.close()
