@@ -126,17 +126,28 @@ def fetch_las(indx, las_dir, las_files):
 
 # Open GPS (Gps.mat should be saved using the load_gps matlab function)
 gps_mat_path = os.path.join(dataset_path, "Gps.mat")
-gps = loadmat(gps_mat_path)['pose_gps']
-gps_times = gps['utime'][0][0][::2].flatten()
-gps_lat_lon_el_theta = gps['lat_lon_el_theta'][0][0][::2]
-gps_X_Y_Z = latlongalt_to_XYZ(gps_lat_lon_el_theta[:,:3])
-gps_x_y_z = np.concatenate(
-        (
-        latlong_to_rel_xy(gps_lat_lon_el_theta[:,:2]),
-        gps_lat_lon_el_theta[:,2][:,None]
-        ), axis = 1)
-gps_theta = gps_xy_to_theta(gps_x_y_z)
-gps_cov = gps['gps_cov'][0][0][::2]
+try:
+    gps = loadmat(gps_mat_path)
+except:
+    print("Gps data not found. Continue without it? Y/[n]: ", end='')
+    keys = input()
+    if keys in ['Y', 'Yes', 'y', 'yes']:
+        GPS_DISABLED = True
+    else:
+        quit()
+else:
+    GPS_DISABLED = False
+    gps = gps['pose_gps']
+    gps_times = gps['utime'][0][0][::2].flatten()
+    gps_lat_lon_el_theta = gps['lat_lon_el_theta'][0][0][::2]
+    gps_X_Y_Z = latlongalt_to_XYZ(gps_lat_lon_el_theta[:,:3])
+    gps_x_y_z = np.concatenate(
+            (
+            latlong_to_rel_xy(gps_lat_lon_el_theta[:,:2]),
+            gps_lat_lon_el_theta[:,2][:,None]
+            ), axis = 1)
+    gps_theta = gps_xy_to_theta(gps_x_y_z)
+    gps_cov = gps['gps_cov'][0][0][::2]
 # import matplotlib.pyplot as plt
 # plt.ion()
 # plt.figure()
@@ -164,12 +175,17 @@ next_imu_indx = 0
 next_las_indx = 0
 
 
-next_gps_time, next_gps_x_y_z, next_gps_theta, next_gps_cov = fetch_gps(
-        gps_times,
-        gps_x_y_z,
-        gps_theta,
-        gps_cov,
-)
+# Fetch first observations
+if GPS_DISABLED:
+    next_gps_time = np.nan
+    gps_times = []
+else:
+    next_gps_time, next_gps_x_y_z, next_gps_theta, next_gps_cov = fetch_gps(
+            gps_times,
+            gps_x_y_z,
+            gps_theta,
+            gps_cov,
+    )
 next_imu_time, next_imu_pos, next_imu_q = fetch_imu(
         imu_times,
         imu_pos,
